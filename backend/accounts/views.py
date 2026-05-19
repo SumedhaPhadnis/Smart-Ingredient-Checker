@@ -158,15 +158,56 @@ class RegisterAPIView(APIView):
                 frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
                 token_obj, _ = EmailVerificationToken.objects.get_or_create(user=user)
                 verify_link = f"{frontend_url}/verify-email/{token_obj.token}/"
-                send_mail(
-                    subject="Verify your Ingrexa account",
-                    message=f"Click the link to verify your account: {verify_link}",
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[user.email],
-                    fail_silently=False,
+                
+                subject = "Verify your Ingrexa account"
+                body = f"Click the link to verify your account: {verify_link}"
+                email_sent = False
+                
+                # Primary: SMTP
+                try:
+                    send_mail(
+                        subject=subject,
+                        message=body,
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[user.email],
+                        fail_silently=False,
                     )
-        except Exception:
-            logger.error("Registration error", exc_info=True)
+                    email_sent = True
+                    logger.info("Verification email sent via SMTP to %s", user.email)
+                except Exception as smtp_err:
+                    logger.warning("SMTP verification email failed: %s. Trying Resend API...", smtp_err)
+                
+                # Fallback: Resend API (HTTP-based, works when Render blocks SMTP ports)
+                if not email_sent:
+                    import requests as http_requests
+                    resend_api_key = os.environ.get('RESEND_API_KEY', '')
+                    if resend_api_key:
+                        resp = http_requests.post(
+                            'https://api.resend.com/emails',
+                            headers={
+                                'Authorization': f'Bearer {resend_api_key}',
+                                'Content-Type': 'application/json'
+                            },
+                            json={
+                                'from': 'Ingrexa Verification <onboarding@resend.dev>',
+                                'to': [user.email],
+                                'subject': subject,
+                                'text': body
+                            },
+                            timeout=10,
+                        )
+                        if resp.status_code in [200, 201, 202]:
+                            email_sent = True
+                            logger.info("Verification email sent via Resend API to %s", user.email)
+                        else:
+                            logger.error("Resend API failed with status %s: %s", resp.status_code, resp.text)
+                    else:
+                        logger.warning("No Resend API key configured for fallback.")
+                        
+                if not email_sent:
+                    raise RuntimeError("Verification email could not be sent via SMTP or Resend API.")
+        except Exception as e:
+            logger.error("Registration error: %s", str(e), exc_info=True)
             return _generic_error("Registration failed. Please try again.")
 
         return Response(

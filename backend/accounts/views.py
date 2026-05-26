@@ -417,11 +417,12 @@ class VerifyEmailAPIView(APIView):
             {"success": True, "message": "Email verified successfully. You can now log in."},
             status=status.HTTP_200_OK,
         )
-    from rest_framework.views import APIView
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 
+# --- 1. Your New Encyclopedia View ---
 class AdditiveListAPIView(APIView):
     permission_classes = [AllowAny]
 
@@ -481,6 +482,88 @@ class AdditiveListAPIView(APIView):
             {"id": 52, "name": "Zinc Oxide Additive", "role": "Nutrient Fortifier", "status": "Safe", "description": "Mineral additive used to artificially fortify refined breakfast cereals. Completely safe and highly effective at addressing zinc deficiencies."}
         ]
         return Response(additives_data, status=status.HTTP_200_OK)
+
+
+# --- 2. Kept from the Main Branch ---
+@extend_schema(tags=["Auth"], summary="Resend verification OTP code")
+class ResendOTPAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        if not email:
+            return Response({"success": False, "message": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(email=email)
+            token_obj = EmailVerificationToken.objects.get(user=user)
+        except (User.DoesNotExist, EmailVerificationToken.DoesNotExist):
+            return Response({"success": True, "message": "If the email exists, a new code has been sent."}, status=status.HTTP_200_OK)
+
+        if token_obj.verified:
+            return Response({"success": False, "message": "Email already verified."}, status=status.HTTP_400_BAD_REQUEST)
+
+       
+        import random
+        from django.utils import timezone
+        token_obj.code = ''.join(random.choices('0123456789', k=6))
+        token_obj.created_at = timezone.now()
+        token_obj.save()
+
+        otp_code = token_obj.code
+        print(f"[VERIFICATION CODE RESENT] User: {user.email} -> {otp_code}", flush=True)
+        
+        subject = "Your new Ingrexa verification code"
+        body = f"Your new 6-digit verification code is: {otp_code}"
+        
+        def send_email_bg(email_to, subj, msg):
+            email_sent = False
+            try:
+                send_mail(
+                    subject=subj,
+                    message=msg,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email_to],
+                    fail_silently=False,
+                )
+                email_sent = True
+                logger.info("Verification email sent via SMTP to %s", email_to)
+            except Exception as smtp_err:
+                logger.warning("SMTP verification email failed: %s. Trying Resend API...", smtp_err)
+            
+            if not email_sent:
+                import requests as http_requests
+                import os
+                resend_api_key = os.environ.get('RESEND_API_KEY', '')
+                if resend_api_key:
+                    try:
+                        resp = http_requests.post(
+                            'https://api.resend.com/emails',
+                            headers={
+                                'Authorization': f'Bearer {resend_api_key}',
+                                'Content-Type': 'application/json'
+                            },
+                            json={
+                                'from': 'Ingrexa Verification <onboarding@resend.dev>',
+                                'to': [email_to],
+                                'subject': subj,
+                                'text': msg
+                            },
+                            timeout=10,
+                        )
+                        if resp.status_code in [200, 201, 202]:
+                            logger.info("Verification email sent via Resend API to %s", email_to)
+                        else:
+                            logger.error("Resend API failed with status %s: %s", resp.status_code, resp.text)
+                    except Exception as e:
+                        logger.error("Resend API error: %s", str(e))
+                else:
+                    logger.warning("No Resend API key configured for fallback.")
+                
+        # Send email synchronously
+        send_email_bg(user.email, subject, body)
+
+        return Response({"success": True, "message": "OTP resent successfully."}, status=status.HTTP_200_OK)
 
 __all__ = [
     "RegisterAPIView",

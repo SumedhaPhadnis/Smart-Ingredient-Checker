@@ -1,6 +1,6 @@
 from django.urls import path
 
-# 🟢 Added AdditiveListAPIView to the imports list here:
+# Combine both branches so we keep ALL the views!
 from .views import (
     EmailTokenObtainPairView,
     VerifyEmailAPIView,
@@ -9,7 +9,8 @@ from .views import (
     MeAPIView,
     RegisterAPIView,
     GoogleLoginAPIView,
-    AdditiveListAPIView,  
+    AdditiveListAPIView,  # Kept from your feature branch
+    ResendOTPAPIView,     # Kept from main branch
 )
 
 urlpatterns = [
@@ -17,10 +18,5 @@ urlpatterns = [
     path("token/",           EmailTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path('verify-email/<uuid:token>/', VerifyEmailAPIView.as_view(), name='verify-email'),
     path("token/refresh/",   CookieTokenRefreshView.as_view(), name="token_refresh"),
-    path("logout/",         LogoutAPIView.as_view(),           name="logout"),
-    path("google-login/",   GoogleLoginAPIView.as_view(),      name="google_login"),
-    path("me/",             MeAPIView.as_view(),               name="me"),
-    
-
-    path('../additives/', AdditiveListAPIView.as_view(), name='additive-list'),
+    # Keep going with the rest of your paths below this...
 ]

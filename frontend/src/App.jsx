@@ -11,8 +11,6 @@ import SettingsPage from './components/Other/SettingsPage';
 import HistoryPage from './components/Other/HistoryPage';
 import Footer from './components/Layout/Footer';
 import api, { setAccessToken, clearAccessToken, getAccessToken } from './api';
-import { useGoogleOneTapLogin } from '@react-oauth/google';
-import { generateNonce } from './utils/nonce';
 
 
 function App() {
@@ -55,26 +53,6 @@ function App() {
         window.addEventListener('ingrexa:session-expired', onExpired);
         return () => window.removeEventListener('ingrexa:session-expired', onExpired);
     }, []);
-
-    useGoogleOneTapLogin({
-        onSuccess: async (credentialResponse) => {
-            try {
-                const nonce = generateNonce();
-                const response = await api.post('/api/auth/google-login/', {
-                    credential: credentialResponse.credential,
-                    nonce,
-                });
-                if (response.data.success) {
-                    setAccessToken(response.data.access);
-                    await fetchUser();
-                }
-            } catch (err) {
-                console.error('One Tap login failed', err);
-            }
-        },
-        onError: () => console.error('One Tap login failed'),
-        disabled: !!user || !!getAccessToken(),
-    });
 
     useEffect(() => {
         const restoreSession = async () => {

@@ -65,6 +65,7 @@ def analyze_text(request):
     """
     text = request.data.get('text', '')
     user_goal = request.data.get('user_goal', 'Regular')
+    ai_provider = request.data.get('ai_provider', None)
     food_type = request.data.get('food_type', 'Solid')
     
     # Security Check 1: Empty input
@@ -188,10 +189,14 @@ def analyze_text(request):
                     user_goal=user_goal,
                     user_id=request.user.pk if request.user and request.user.is_authenticated else None,
                     input_method="manual",
+                    ai_provider=ai_provider
                 ),
                 queue="analysis",
             )
+            if task.ready():
+                return Response(task.result, status=status.HTTP_200_OK)
             print(f"[CELERY] analyze_text dispatched → task_id={task.id}")
+
             return Response(
                 {
                     "success": True,
@@ -447,6 +452,7 @@ def analyze_product(request):
     barcode = request.data.get('barcode', '').strip()
     supplied_ingredients = request.data.get('ingredients_text', '').strip()
     user_goal = request.data.get('user_goal', 'Regular')
+    ai_provider = request.data.get('ai_provider', None)
     frontend_meta = request.data.get('product_meta', None)
     
     # User might define it, otherwise OpenFoodFacts tags determines it
@@ -506,9 +512,12 @@ def analyze_product(request):
                     input_method='openfoodfacts' if not barcode else 'barcode',
                     barcode=barcode,
                     product_info=product_info,
+                    ai_provider=ai_provider,
                 ),
                 queue="analysis",
             )
+            if task.ready():
+                return Response(task.result, status=status.HTTP_200_OK)
             print(f"[CELERY] analyze_product dispatched → task_id={task.id}")
             return Response(
                 {
@@ -526,6 +535,7 @@ def analyze_product(request):
                 macros=macros,
                 food_type=food_type,
                 user_goal=user_goal,
+                ai_provider=ai_provider,
             )
             analysis_result['input_method'] = 'openfoodfacts'
             analysis_result['raw_ingredients_text'] = ingredients_text

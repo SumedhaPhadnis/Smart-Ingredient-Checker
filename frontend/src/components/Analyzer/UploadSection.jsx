@@ -37,6 +37,7 @@ function UploadSection({ onAnalyze, user }) {
     const [error, setError] = useState(null);
     const [userGoal, setUserGoal] = useState('Regular');
     const [showDropdown, setShowDropdown] = useState(false);
+    const [aiProvider, setAiProvider] = useState('auto');
 
     const searchTimer = useRef(null);
     const searchInputRef = useRef(null);
@@ -130,6 +131,7 @@ function UploadSection({ onAnalyze, user }) {
             const res = await api.post('/api/analyze-product/', {
                 barcode: product.barcode,
                 user_goal: userGoal,
+                ai_provider: aiProvider
             });
 
             if (res.data.success) {
@@ -156,7 +158,7 @@ function UploadSection({ onAnalyze, user }) {
         if (!manualText.trim()) return;
         setIsLoading(true);
         try {
-            const res = await api.post('/api/analyze/text/', { text: manualText, user_goal: userGoal });
+            const res = await api.post('/api/analyze/text/', { text: manualText, user_goal: userGoal, ai_provider: aiProvider });
             if (res.data.success) {
                 onAnalyze(res.data, null);
             } else {
@@ -186,6 +188,21 @@ function UploadSection({ onAnalyze, user }) {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         Raw Ingredients
                     </button>
+                </div>
+                <div className="ai-provider-selector">
+                    {[
+                        { value: 'auto',   label: 'Auto' },
+                        { value: 'openai', label: 'GPT-4o' },
+                        { value: 'gemini', label: 'Gemini' },
+                    ].map(opt => (
+                        <button
+                            key={opt.value}
+                            className={`provider-chip ${aiProvider === opt.value ? 'active' : ''}`}
+                            onClick={() => setAiProvider(opt.value)}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
                 </div>
 
                 <div className="analyzer-content-wrapper">

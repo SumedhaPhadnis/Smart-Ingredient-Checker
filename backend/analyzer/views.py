@@ -656,6 +656,30 @@ def task_status(request, task_id: str):
         }, status=status.HTTP_200_OK)
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def ai_providers(request):
+    """
+    Return available AI providers and the currently configured default.
+    """
+    openai_available = bool(os.getenv('OPENAI_API_KEY'))
+    gemini_available = bool(os.getenv('GEMINI_API_KEY'))
+
+    providers = []
+    if gemini_available:
+        providers.append({'id': 'gemini', 'name': 'Google Gemini', 'available': True})
+    if openai_available:
+        providers.append({'id': 'openai', 'name': 'OpenAI GPT', 'available': True})
+    # 'auto' is always offered as an option
+    providers.append({'id': 'auto', 'name': 'Auto (recommended)', 'available': True})
+
+    default_provider = os.getenv('AI_PROVIDER', 'auto').lower()
+
+    return Response({
+        'providers': providers,
+        'default': default_provider,
+    })
+
 @api_view(['GET', 'HEAD'])
 @permission_classes([AllowAny])
 def health_check(request):

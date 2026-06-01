@@ -226,15 +226,16 @@ def send_contact_email_task(self, name: str, email: str, message: str):
                         "Content-Type": "application/json",
                     },
                     json={
-                        "from": "Ingrexa Contact <onboarding@resend.dev>",
+                        "from": os.environ.get("RESEND_FROM_EMAIL", "Ingrexa Contact <onboarding@resend.dev>"),
                         "to": [to_email],
                         "subject": subject,
                         "text": body,
                     },
                     timeout=15,
                 )
+                resp.raise_for_status()
                 print(f"[CELERY] Resend response: {resp.status_code}", flush=True)
-                email_sent = resp.status_code == 200
+                email_sent = True
             else:
                 print("[CELERY] No Resend API key. Email not sent.", flush=True)
         except Exception as resend_err:

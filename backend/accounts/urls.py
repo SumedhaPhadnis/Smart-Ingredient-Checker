@@ -1,5 +1,6 @@
 from django.urls import path
 
+# Combine both branches so we keep ALL the views!
 from .views import (
     EmailTokenObtainPairView,
     VerifyEmailAPIView,
@@ -8,9 +9,10 @@ from .views import (
     MeAPIView,
     RegisterAPIView,
     GoogleLoginAPIView,
+    AdditiveListAPIView,  # Kept from your feature branch
+    ResendOTPAPIView,     # Kept from main branch
     ResendOTPAPIView,
 )
-
 
 urlpatterns = [
     path("register/",       RegisterAPIView.as_view(),        name="register"),

@@ -2315,10 +2315,9 @@ html {
    Contact Page
    =================================== */
 .contact-page {
-    min-height: calc(100vh - 200px);
-    padding: var(--spacing-2xl) 0;
+    padding: var(--spacing-lg) 0;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
 }
 
@@ -2331,7 +2330,7 @@ html {
 
 .contact-hero {
     text-align: center;
-    margin-bottom: var(--spacing-2xl);
+    margin-bottom: var(--spacing-md);
 }
 
 .contact-title {
@@ -2350,7 +2349,7 @@ html {
     background: var(--color-bg-card);
     border: 2px solid var(--color-border);
     border-radius: var(--radius-xl);
-    padding: var(--spacing-2xl);
+    padding: var(--spacing-lg);
     box-shadow: var(--shadow-md);
     transition: all var(--transition-base);
 }
@@ -2433,7 +2432,7 @@ html {
 
 .contact-footer-info {
     text-align: center;
-    margin-top: var(--spacing-2xl);
+    margin-top: var(--spacing-xl);
 }
 
 .contact-footer-info p {

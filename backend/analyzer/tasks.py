@@ -52,6 +52,7 @@ def analyze_ingredients_task(
     input_method: str = "manual",
     barcode: str = "",
     product_info: dict | None = None,
+    ai_provider=None
 ):
     """
     Run the full ingredient analysis pipeline in a Celery worker.
@@ -86,6 +87,7 @@ def analyze_ingredients_task(
             macros=macros or {},
             food_type=food_type,
             user_goal=user_goal,
+            ai_provider=ai_provider,
         )
 
         # ── Enrich with product metadata from OpenFoodFacts ────────────────

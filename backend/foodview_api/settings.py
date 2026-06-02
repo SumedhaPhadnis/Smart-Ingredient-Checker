@@ -99,7 +99,7 @@ DATABASES = {
 # DISABLE_SERVER_SIDE_CURSORS is also required for PgBouncer transaction pooling.
 db_from_env = dj_database_url.config(
     conn_max_age=0,   # Required for PgBouncer / Supabase connection pooler
-    ssl_require=True, # Force SSL for Supabase
+    ssl_require=not DEBUG, # Force SSL for Supabase
 )
 if db_from_env:
     db_from_env['DISABLE_SERVER_SIDE_CURSORS'] = True
@@ -371,3 +371,5 @@ CELERY_TASK_ROUTES = {
     "analyzer.tasks.send_contact_email_task": {"queue": "email"},
 }
 
+CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'False') == 'True'
+CELERY_TASK_EAGER_PROPAGATES = os.getenv('CELERY_TASK_EAGER_PROPAGATES', 'False') == 'True'

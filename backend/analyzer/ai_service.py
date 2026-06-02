@@ -15,6 +15,13 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
+try:
+    from google import genai
+    GEMINI_AVAILABLE = True
+    from google.genai import types
+except ImportError:
+    GEMINI_AVAILABLE = False
+
 
 class IngredientAnalyzer:
     """Analyzes ingredient lists and provides health insights"""
@@ -22,20 +29,30 @@ class IngredientAnalyzer:
     def __init__(self):
         self.openai_client = None
         self.scorer = IngredientScorer()  # Our scientific scorer
+        self.provider = os.getenv('AI_PROVIDER','auto').lower()
         if OPENAI_AVAILABLE:
-            api_key = os.getenv('OPENAI_API_KEY')
-            if api_key:
+            openai_api_key = os.getenv('OPENAI_API_KEY')
+            if openai_api_key:
                 try:
-                    self.openai_client = OpenAI(api_key=api_key)
+                    self.openai_client = OpenAI(api_key=openai_api_key)
                 except Exception as e:
                     print(f"Warning: Could not initialize OpenAI client: {e}")
                     print("Falling back to rule-based analysis")
                     self.openai_client = None
+        if GEMINI_AVAILABLE:
+            gemini_api_key = os.getenv('GEMINI_API_KEY')
+            if gemini_api_key:
+                try:
+                    self.gemini_client = genai.Client(api_key=gemini_api_key)
+                except Exception as e:
+                    print(f"Warning: Could not initialize OpenAI client: {e}")
+                    print("Falling back to rule-based analysis")
+                    self.gemini_client = None
     
     def analyze_ingredients(self, ingredient_text: str, confidence: float, macros: Dict = None, food_type: str = 'Solid', user_goal: str = 'Regular') -> Dict[str, Any]:
         """
-        Analyze ingredient text and return structured health insights
-        
+        routes the anazyler process, choses which ai to use based on availability, if none available, 
+        proceeds with rule based analyzer
         Args:
             ingredient_text: Raw ingredient text
             confidence: Confidence score (0-100)
@@ -43,16 +60,51 @@ class IngredientAnalyzer:
         Returns:
             Dictionary with analysis results
         """
-        # Try AI analysis if available
-        if self.openai_client:
-            try:
-                return self._analyze_with_ai(ingredient_text, confidence, macros or {}, food_type, user_goal)
-            except Exception as e:
-                print(f"AI analysis error: {e}")
-                # Fall back to rule-based analysis
-        
-        # Use rule-based analysis as fallback
-        return self._analyze_with_rules(ingredient_text, confidence, macros or {}, food_type, user_goal)
+        if self.provider == 'gemini':
+            primary = self._try_gemini
+            fallback = self._try_openai
+        elif self.provider == 'openai':
+            primary = self._try_openai
+            fallback = self._try_gemini
+        else: 
+            if hasattr(self, 'gemini_client') and self.gemini_client:
+                primary = self._try_gemini
+                fallback = self._try_openai
+            else:
+                primary = self._try_openai
+                fallback = self._try_gemini
+
+        result = primary(ingredient_text, confidence, macros, food_type, user_goal) #try the primary model
+        if result is not None:
+            return result
+
+        result = fallback(ingredient_text, confidence, macros, food_type, user_goal) # try the fall back model
+        if result is not None:
+            return result
+
+        return self._analyze_with_rules(ingredient_text, confidence, macros, food_type, user_goal) # if they aint available use rule based 
+
+    def _try_openai(self, ingredient_text, confidence, macros, food_type, user_goal):
+        if not self.openai_client:
+            return None
+        try:
+            result = self._analyze_with_ai(ingredient_text, confidence, macros, food_type, user_goal)
+            result['ai_provider'] = 'openai'
+            return result
+        except Exception as e:
+            print(f"OpenAI analysis error: {e}")
+            return None
+
+    def _try_gemini(self, ingredient_text, confidence, macros, food_type, user_goal):
+        if not hasattr(self, 'gemini_client') or not self.gemini_client:
+            return None
+        try:
+            result = self._analyze_with_gemini(ingredient_text, confidence, macros, food_type, user_goal)
+            result['ai_provider'] = 'gemini'
+            return result
+        except Exception as e:
+            print(f"Gemini analysis error: {e}")
+            return None
     
     def _analyze_with_ai(self, ingredient_text: str, confidence: float, macros: Dict, food_type: str, user_goal: str) -> Dict[str, Any]:
         """Use OpenAI GPT to analyze ingredients"""
@@ -175,6 +227,113 @@ Provide a JSON response with the following structure:
             'limit_groups': [analysis.get('suitability', {}).get('avoidFor', "")] if analysis.get('suitability', {}).get('avoidFor') else [],
             'bottom_line': analysis.get('verdict', ""),
             'transparency_note': "AI-assisted analysis. Always verify with actual packaging.",
+            'product': analysis.get('product', {}),
+            'ingredients': ingredients_list,
+            'score_breakdown': score_data['score_breakdown']
+        }
+    
+    def _analyze_with_gemini(self, ingredient_text, confidence, macros, food_type, user_goal):
+        """Use Google Gemini to analyze ingredients"""
+
+        prompt = f"""You are a food safety expert providing honest, comprehensive ingredient analysis. Be direct and specific about health impacts.
+
+Ingredient List (may be in any language):
+{ingredient_text}
+
+MANDATORY INSTRUCTION: If the ingredients or product information above are not in English, you MUST translate them accurately into English before performing the analysis. Every single field in your response (product name, category, verdict, suitability, role, explanation, ingredients array, and flags) MUST be in English.
+
+Provide a JSON response with the following structure:
+{{
+    "product": {{
+        "name": "Guessed Product Name",
+        "category": "Food Category",
+        "food_type": "Solid | Liquid | Semi-solid"
+    }},
+    "verdict": "Clear, honest summary (1-2 sentences)",
+    "suitability": {{
+        "goodFor": "Who is this good for?",
+        "cautionFor": "Who should be careful?",
+        "avoidFor": "Who should avoid this?"
+    }},
+    "ingredient_details": [
+        {{
+            "name": "Ingredient Name", 
+            "role": "Role", 
+            "explanation": "Provide a comprehensive, balanced layman's explanation. (e.g. 'Used to [purpose/benefit] and generally [safety status]. However, in excess it can [potential risks]. Not a health food but [conclusion/necessity].')"
+        }}
+    ],
+    "ingredients": ["Flattened list of ingredients. If an ingredient has sub-components in brackets like 'Cookie Pieces (Flour, Sugar)', split them into separate items: ['Cookie Pieces', 'Flour', 'Sugar']."],
+    "flags": [
+        {{"icon": "⚠️", "text": "Flag content"}}
+    ]
+}}
+"""
+
+        response = self.gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                response_mime_type="application/json",
+            ),
+        )
+        analysis = json.loads(response.text)
+
+        #extract ingredient list from ai response
+        ingredients_list = analysis.get('ingredients', [])
+        if not ingredients_list:
+            ingredients_list = self._extract_ingredients_from_text(ingredient_text)
+
+        # food type - solid,liquid or semi solid
+        ai_food_type = analysis.get('product', {}).get('food_type', 'Solid')
+        final_food_type = food_type if food_type != 'Solid' else ai_food_type
+
+        # Use our scientific scorer with exact macros if provided, otherwise AI text fallback
+        score_data = self.scorer.calculate_score(ingredients_list, macros, final_food_type, user_goal)
+
+        #ingredient breakdown with ai explanations
+        ingredient_breakdown = []
+        for item in analysis.get('ingredient_details', []):
+            name = item.get('name', 'Unknown')
+            ing_lower = name.lower()
+            if any(bad in ing_lower for bad in ['artificial', 'refined', 'hydrogenated', 'high fructose', 'msg', 'aspartame']):
+                risk = "🔴"
+            elif any(mod in ing_lower for mod in ['sugar', 'salt', 'preservative', 'color', 'flavor', 'modified', 'gum', 'emulsifier']):
+                risk = "🟡"
+            else:
+                risk = "🟢"
+            ingredient_breakdown.append({
+                "name": name,
+                "role": item.get('role', 'Ingredient'),
+                "risk": risk,
+                "description": item.get('explanation', 'A common food ingredient.')
+            })
+
+        return {
+            'success': True,
+            'confidence': confidence,
+            'method': 'gemini+scientific_scorer',
+            'score': score_data['score'],
+            'nova_group': score_data['nova_group'],
+            'food_type': final_food_type,
+            'details': score_data.get('details', {}),
+            'overview': {
+                "processing_level": "Highly processed" if score_data['nova_group'] == 4 else "Moderately processed" if score_data['nova_group'] == 3 else "Minimally processed",
+                "ingredient_count": len(ingredients_list),
+                "additives_present": "Yes" if any(self.scorer.ADDITIVE_CONCERNS.get(ing.lower()) for ing in ingredients_list) else "No"
+            },
+            'frequency_verdict': analysis.get('verdict', ''),
+            'key_signals': {
+                "added_sugar": "Yes" if any(s in ingredient_text.lower() for s in self.scorer.ADDED_SUGARS) else "No",
+                "refined_flour_starch": "Yes" if any(r in ingredient_text.lower() for r in self.scorer.REFINED_CARBS) else "No",
+                "artificial_colors": "Yes" if "color" in ingredient_text.lower() or "colour" in ingredient_text.lower() else "No",
+                "preservatives": "Yes" if "preservative" in ingredient_text.lower() else "No",
+                "artificial_flavors": "Yes" if "flavor" in ingredient_text.lower() or "flavour" in ingredient_text.lower() else "No"
+            },
+            'ingredient_breakdown': ingredient_breakdown,
+            'limit_groups': [analysis.get('suitability', {}).get('avoidFor', '')] if analysis.get('suitability', {}).get('avoidFor') else [],
+            'bottom_line': analysis.get('verdict', ''),
+            'transparency_note': 'AI-assisted analysis. Always verify with actual packaging.',
             'product': analysis.get('product', {}),
             'ingredients': ingredients_list,
             'score_breakdown': score_data['score_breakdown']
@@ -573,11 +732,14 @@ def _get_analyzer():
     return _analyzer_instance
 
 
-def analyze_product_from_text(text: str, macros: Dict = None, food_type: str = 'Solid', user_goal: str = 'Regular') -> Dict[str, Any]:
+def analyze_product_from_text(text: str, macros: Dict = None, food_type: str = 'Solid', user_goal: str = 'Regular',ai_provider=None) -> Dict[str, Any]:
     """
     Main entry point for analyzing ingredients from text string
     """
     analyzer = _get_analyzer()
+    original_provider = analyzer.provider
+    if ai_provider and ai_provider in ('openai', 'gemini', 'auto'):
+        analyzer.provider = ai_provider
     
     # Check if text looks like ingredients
     if not _detect_ingredients(text):

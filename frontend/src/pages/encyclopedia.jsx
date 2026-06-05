@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import api from "../api";
 import SearchBar from "../components/encyclopedia/SearchBar";
 import Filter from "../components/encyclopedia/Filter";
 import AdditiveGrid from "../components/encyclopedia/AdditiveGrid";
@@ -15,15 +16,9 @@ export default function Encyclopedia() {
   const fetchAdditives = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/additives/")
+    api.get("/api/additives/")
       .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to fetch additives from the server");
-        }
-        return response.json();
-      })
-      .then((data) => {
-        setAdditivesList(data);
+        setAdditivesList(response.data);
         setLoading(false);
       })
       .catch((err) => {
